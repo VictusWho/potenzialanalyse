@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-body);
+  --font-heading: var(--font-heading);
+}
+
+/* =====================
+   SMOOTH SCROLL
+   ===================== */
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* =====================
+   SCROLLBAR
+   ===================== */
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #F5F3FF; }
+::-webkit-scrollbar-thumb { background: #C4B5FD; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #8B5CF6; }
+
+/* =====================
+   BASE
+   ===================== */
+
+* { box-sizing: border-box; }
+
+body {
+  background: #FAFAFE;
+  color: #18181B;
+  font-family: var(--font-body, 'Inter', sans-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: 0.01em;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(139, 92, 246, 0.5);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* =====================
+   KEYFRAMES
+   ===================== */
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* =====================
+   UTILITIES
+   ===================== */
+
+.animate-spin {
+  animation: spin 1.2s linear infinite;
+}
+
+/* text-wrap balance polyfill class */
+.balance {
+  text-wrap: balance;
+}
