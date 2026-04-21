@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { motion } from "framer-motion";
+import { motion, type Easing } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 interface BeamPath {
@@ -155,7 +155,7 @@ const SVGs = ({ beams, width, height, baseColor, accentColor }: SVGsProps) => {
                 duration: t.duration ?? 2,
                 repeat: Infinity,
                 repeatType: "loop",
-                ease: t.ease ?? "linear",
+                ease: (t.ease ?? "linear") as Easing,
                 repeatDelay: t.repeatDelay ?? 0,
                 delay: t.delay ?? 0,
               }}
