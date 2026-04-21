@@ -12,6 +12,120 @@ import {
 } from "@phosphor-icons/react";
 import { isDisposableEmail } from "./disposable-emails";
 import Footer from "./components/Footer";
+import { PulseBeams } from "@/components/ui/pulse-beams";
+
+// ─────────────────────────────────────────────
+// CTA PULSE BEAMS CONFIG
+// ─────────────────────────────────────────────
+
+const CTA_BEAMS = [
+  {
+    path: "M269 220.5H16.5C10.9772 220.5 6.5 224.977 6.5 230.5V398.5",
+    gradientDirection: { x1: 1, y1: 0, x2: 0, y2: 1 },
+    gradientConfig: {
+      initial: { x1: "0%", x2: "0%", y1: "80%", y2: "100%" },
+      animate: {
+        x1: ["0%", "0%", "200%"],
+        x2: ["0%", "0%", "180%"],
+        y1: ["80%", "0%", "0%"],
+        y2: ["100%", "20%", "20%"],
+      },
+      transition: {
+        duration: 3,
+        repeat: Infinity,
+        repeatType: "loop" as const,
+        ease: "linear",
+        repeatDelay: 0,
+        delay: 0,
+      },
+    },
+  },
+  {
+    path: "M568 200H841C846.523 200 851 195.523 851 190V40",
+    gradientDirection: { x1: 0, y1: 1, x2: 1, y2: 0 },
+    gradientConfig: {
+      initial: { x1: "0%", x2: "0%", y1: "80%", y2: "100%" },
+      animate: {
+        x1: ["20%", "100%", "100%"],
+        x2: ["0%", "90%", "90%"],
+        y1: ["80%", "80%", "-20%"],
+        y2: ["100%", "100%", "0%"],
+      },
+      transition: {
+        duration: 3,
+        repeat: Infinity,
+        repeatType: "loop" as const,
+        ease: "linear",
+        repeatDelay: 0,
+        delay: 0.6,
+      },
+    },
+  },
+  {
+    path: "M425.5 274V333C425.5 338.523 421.023 343 415.5 343H152C146.477 343 142 347.477 142 353V426.5",
+    gradientDirection: { x1: 1, y1: 0, x2: 0, y2: 1 },
+    gradientConfig: {
+      initial: { x1: "0%", x2: "0%", y1: "80%", y2: "100%" },
+      animate: {
+        x1: ["20%", "100%", "100%"],
+        x2: ["0%", "90%", "90%"],
+        y1: ["80%", "80%", "-20%"],
+        y2: ["100%", "100%", "0%"],
+      },
+      transition: {
+        duration: 3,
+        repeat: Infinity,
+        repeatType: "loop" as const,
+        ease: "linear",
+        repeatDelay: 0,
+        delay: 1.2,
+      },
+    },
+  },
+  {
+    path: "M493 274V333.226C493 338.749 497.477 343.226 503 343.226H760C765.523 343.226 770 347.703 770 353.226V427",
+    gradientDirection: { x1: 0, y1: 0, x2: 1, y2: 1 },
+    gradientConfig: {
+      initial: { x1: "40%", x2: "50%", y1: "160%", y2: "180%" },
+      animate: { x1: "0%", x2: "10%", y1: "-40%", y2: "-20%" },
+      transition: {
+        duration: 3,
+        repeat: Infinity,
+        repeatType: "loop" as const,
+        ease: "linear",
+        repeatDelay: 0,
+        delay: 1.8,
+      },
+    },
+  },
+  {
+    path: "M380 168V17C380 11.4772 384.477 7 390 7H414",
+    gradientDirection: { x1: 0, y1: 1, x2: 1, y2: 0 },
+    gradientConfig: {
+      initial: { x1: "-40%", x2: "-10%", y1: "0%", y2: "20%" },
+      animate: {
+        x1: ["40%", "0%", "0%"],
+        x2: ["10%", "0%", "0%"],
+        y1: ["0%", "0%", "180%"],
+        y2: ["20%", "20%", "200%"],
+      },
+      transition: {
+        duration: 3,
+        repeat: Infinity,
+        repeatType: "loop" as const,
+        ease: "linear",
+        repeatDelay: 0,
+        delay: 2.4,
+      },
+    },
+  },
+];
+
+const CTA_GRADIENT_COLORS = {
+  start: "#DDD6FE",
+  middle: "#8B5CF6",
+  end: "#6D28D9",
+};
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -140,7 +254,7 @@ const KUNDENGEWINNUNG = [
   "Bezahlte Werbung",
 ];
 
-const BESTANDSKUNDEN = ["Unter 50", "50–200", "200–500", "500–1.000", "Über 1.000"];
+const BESTANDSKUNDEN = ["Unter 50", "50–200", "Über 200"];
 
 const FOLLOWUP = [
   "Ja, systematisch",
@@ -207,17 +321,22 @@ function calculateScore(a: Answers): ScoreResult {
     "Was ist Follow-up?": 15,
   };
   const q10Points = q10Map[a.q10_followup] ?? 0;
-  const q11Points = ["200–500", "500–1.000", "Über 1.000"].includes(a.q11_bestandskunden) ? 10 : 0;
+  const q11Map: Record<string, number> = {
+    "Unter 50": 10,
+    "50–200": 7,
+    "Über 200": 4,
+  };
+  const q11Points = q11Map[a.q11_bestandskunden] ?? 0;
   const normalized = q6Points + q7Points + q8Points + q10Points + q11Points;
   const timeSaving = getCoupledTimeSaving(normalized, a.q8_stunden);
 
   let category: string;
   let description: string;
 
-  if (normalized <= 30) {
+  if (normalized < 40) {
     category = "Grund";
     description = "Bereits solide Strukturen erkennbar. Punktuelle Optimierung erscheint möglich.";
-  } else if (normalized <= 60) {
+  } else if (normalized < 70) {
     category = "Mittel";
     description = `Geschätztes Automatisierungspotenzial: ca. ${timeSaving}.*`;
   } else {
@@ -235,7 +354,7 @@ function calculateScore(a: Answers): ScoreResult {
     { label: "Wiederholende Aufgaben", points: q7Points, max: 30, value: realTasks.length > 0 ? `${realTasks.length} identifiziert` : "Keine" },
     { label: "Zeitaufwand", points: q8Points, max: 25, value: a.q8_stunden || "—" },
     { label: "Follow-up System", points: q10Points, max: 15, value: a.q10_followup || "—" },
-    { label: "Bestandskunden", points: q11Points, max: 10, value: a.q11_bestandskunden || "—" },
+    { label: "Unternehmensgröße", points: q11Points, max: 10, value: a.q11_bestandskunden || "—" },
   ];
 
   return { normalized, timeSaving, category, description, breakdown };
@@ -597,7 +716,7 @@ function NavButtons({
 function IntroScreen({ onStart }: { onStart: () => void }) {
   return (
     <div className="min-h-[100dvh] flex items-center px-4 py-16">
-      <div className="max-w-4xl mx-auto w-full text-center">
+      <div className="max-w-4xl md:max-w-6xl mx-auto w-full text-center">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
@@ -616,41 +735,88 @@ function IntroScreen({ onStart }: { onStart: () => void }) {
 
           {/* Massive headline */}
           <h1
-            className="text-[clamp(2.8rem,7vw,5.5rem)] leading-[1.0] tracking-tight mb-8 balance mx-auto"
+            className="text-[clamp(2.15rem,5.2vw,4rem)] leading-[1.1] tracking-tight mb-8 mx-auto max-w-4xl md:max-w-6xl"
             style={{ fontFamily: "var(--font-heading), Georgia, serif", color: C.text }}
           >
-            Wie viele Stunden<br />
-            <span style={{ color: C.accent }}>verlieren</span> Sie<br />
-            jede Woche?
+            <span className="md:whitespace-nowrap">Welche manuellen Workflows</span>
+            <br />
+            <span style={{ color: C.accent }}>blockieren</span>
+            <br />
+            <span className="md:whitespace-nowrap">Ihre Kapazitäten?</span>
           </h1>
 
           <p
-            className="text-lg leading-relaxed mb-12 max-w-[52ch] mx-auto"
+            className="text-lg leading-relaxed mb-4 max-w-[56ch] mx-auto"
             style={{ color: C.textSecondary }}
           >
-            Die meisten Unternehmer verbringen 10–20 Stunden pro Woche mit
-            Aufgaben, die ein System in Sekunden erledigt. Finden Sie in
-            5 Minuten heraus, wo Ihr größtes Potenzial liegt.
+            Jede Stunde in ineffizienten Prozessen fehlt dort, wo Ihr Unternehmen
+            wächst. Identifizieren Sie Ihr Automatisierungs-Potenzial.
+            <br />
+            <span style={{ color: C.text, fontWeight: 500 }}>In unter 5 Minuten.</span>
           </p>
 
-          {/* CTA */}
-          <motion.button
-            onClick={onStart}
+          {/* CTA with pulse beams */}
+          <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.5 }}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="inline-flex items-center gap-3 px-8 py-4 rounded-xl text-base transition-all duration-300 shadow-[0_8px_32px_-8px_rgba(139,92,246,0.3)]"
-            style={{
-              background: C.accent,
-              color: C.onAccent,
-              fontWeight: 500,
-            }}
           >
-            Jetzt herausfinden
-            <ArrowRight size={18} weight="bold" />
-          </motion.button>
+            <PulseBeams
+              beams={CTA_BEAMS}
+              gradientColors={CTA_GRADIENT_COLORS}
+              baseColor="#E5E0F5"
+              accentColor="#8B5CF6"
+              className="h-auto min-h-[240px] bg-transparent"
+            >
+              <motion.button
+                onClick={onStart}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="group relative inline-block h-[72px] min-w-[300px] cursor-pointer rounded-2xl p-[1.5px] text-base shadow-[0_12px_40px_-12px_rgba(139,92,246,0.35)] transition-[box-shadow] duration-500 hover:shadow-[0_18px_50px_-10px_rgba(139,92,246,0.6)]"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #FFFFFF 0%, #DDD6FE 35%, #C4B5FD 50%, #DDD6FE 65%, #FFFFFF 100%)",
+                }}
+              >
+                {/* Hover: vivid white→purple gradient outline overlay */}
+                <span
+                  className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, #FFFFFF 0%, #A78BFA 30%, #8B5CF6 50%, #A78BFA 70%, #FFFFFF 100%)",
+                  }}
+                />
+                {/* Inner purple pill */}
+                <span
+                  className="relative z-10 flex h-full w-full items-center justify-center gap-3 overflow-hidden rounded-[calc(1rem-1.5px)] px-10"
+                  style={{ background: C.accent, fontWeight: 600 }}
+                >
+                  {/* Hover: inner radial glow from top (white sheen) */}
+                  <span
+                    className="pointer-events-none absolute inset-0 rounded-[calc(1rem-1.5px)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                    style={{
+                      background:
+                        "radial-gradient(75% 100% at 50% 0%, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 75%)",
+                    }}
+                  />
+                  <span
+                    className="relative flex items-center gap-3 bg-clip-text text-transparent"
+                    style={{
+                      backgroundImage:
+                        "linear-gradient(90deg, #F5F3FF 0%, #FFFFFF 50%, #F5F3FF 100%)",
+                    }}
+                  >
+                    Potenzial berechnen
+                  </span>
+                  <ArrowRight
+                    size={18}
+                    weight="bold"
+                    className="relative text-white"
+                  />
+                </span>
+              </motion.button>
+            </PulseBeams>
+          </motion.div>
 
           {/* Trust */}
           <motion.div
@@ -1007,7 +1173,7 @@ function Phase4({
 
       <QuestionBlock
         num={11}
-        label="Was wäre Ihnen eine Lösung wert, die Ihnen 10+ Stunden pro Woche spart?"
+        label="Welches Budget wäre Ihnen eine Automatisierungslösung wert, die Ihre wiederkehrenden Aufgaben spürbar reduziert?"
       >
         <div className="flex flex-col gap-2">
           {WERT.map((w) => (
@@ -1102,6 +1268,18 @@ function Phase4({
         </div>
       </motion.div>
 
+      {/* Transparenz-Hinweis */}
+      <motion.div variants={STAGGER_ITEM} className="mb-5">
+        <p
+          className="text-[14px] leading-relaxed"
+          style={{ color: C.textSecondary }}
+        >
+          Mit dem Absenden sehen Sie Ihr Ergebnis sofort. Zusätzlich werden
+          Ihre Angaben an Ludovico Ferrara übermittelt, der sich für ein
+          persönliches Gespräch bei Ihnen meldet.
+        </p>
+      </motion.div>
+
       {/* Consent */}
       <motion.div variants={STAGGER_ITEM} className="mb-6">
         <label
@@ -1172,7 +1350,7 @@ function Phase4({
             </>
           ) : (
             <>
-              Ergebnis anzeigen
+              Analyse abschließen
               <ArrowRight size={16} weight="bold" />
             </>
           )}
@@ -1536,11 +1714,91 @@ function ResultScreen({
           </motion.div>
         </motion.div>
 
+        {/* CTA block — category-dependent headline + subtext */}
+        {(() => {
+          const ctaCopy =
+            score.category === "Hoch"
+              ? {
+                  headlineA: "In 15 Minuten zeige ich Ihnen,",
+                  headlineB: "welche Prozesse wir automatisieren.",
+                  subtext:
+                    "Bei Ihrem Profil ist das Potenzial deutlich. Unternehmen in Ihrer Situation gewinnen am meisten, wenn sie jetzt strukturieren — bevor die manuellen Prozesse noch komplexer werden und der Aufräum-Aufwand wächst.",
+                }
+              : score.category === "Mittel"
+              ? {
+                  headlineA: "In 15 Minuten zeige ich Ihnen,",
+                  headlineB: "wo Ihre größten Hebel liegen.",
+                  subtext:
+                    "Es gibt erkennbares Potenzial. Viele Unternehmen in Ihrer Größe automatisieren erst, wenn die manuelle Last überhand nimmt — ein Blick jetzt zeigt, wo Sie früh ansetzen können.",
+                }
+              : {
+                  headlineA: "In 15 Minuten klären wir,",
+                  headlineB: "ob sich ein Schritt jetzt lohnt.",
+                  subtext:
+                    "Auch wenn das Potenzial aktuell überschaubar ist — wer früh Strukturen schafft, verhindert spätere Wachstumsschmerzen. Das Erstgespräch klärt, ob ein Schritt jetzt schon sinnvoll ist oder besser später.",
+                };
+
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.1, duration: 0.5 }}
+              className="rounded-2xl p-8 mb-5 text-center"
+              style={{ background: C.surface, border: `1px solid ${C.border}` }}
+            >
+              <h3
+                className="text-[1.3rem] md:text-[1.6rem] mb-4 tracking-tight balance"
+                style={{ fontFamily: "var(--font-heading), Georgia, serif", color: C.text }}
+              >
+                {ctaCopy.headlineA}
+                <br />
+                <span style={{ color: C.accent }}>{ctaCopy.headlineB}</span>
+              </h3>
+
+              <p
+                className="text-sm leading-relaxed max-w-[46ch] mx-auto mb-6"
+                style={{ color: C.textSecondary }}
+              >
+                {ctaCopy.subtext}
+              </p>
+
+              <motion.a
+                href="https://calendly.com/moreno-who/30min"
+                target="_blank"
+                rel="noopener noreferrer"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="inline-flex items-center gap-2.5 px-8 py-4 rounded-xl text-[15px] transition-all duration-300 shadow-[0_8px_32px_-8px_rgba(139,92,246,0.3)]"
+                style={{
+                  background: C.accent,
+                  color: C.onAccent,
+                  fontWeight: 500,
+                }}
+              >
+                Kostenloses Erstgespräch buchen
+                <ArrowSquareOut size={16} weight="bold" />
+              </motion.a>
+
+              <p
+                className="text-sm max-w-[42ch] mx-auto mt-6"
+                style={{ color: C.textSecondary }}
+              >
+                Kein Verkaufsgespräch — nur eine ehrliche Einschätzung,
+                was in Ihrem Fall möglich ist und was nicht.
+              </p>
+
+              <p className="mt-3 text-[12px]" style={{ color: C.textMuted }}>
+                Keine Verpflichtung. Keine versteckten Kosten.
+              </p>
+            </motion.div>
+          );
+        })()}
+
         {/* Disclaimer — rechtlich erforderlich gem. § 5 UWG */}
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 1.15, duration: 0.5 }}
+          transition={{ delay: 1.2, duration: 0.5 }}
           className="rounded-xl p-5 mb-5"
           style={{
             background: C.accentSubtle,
@@ -1570,48 +1828,6 @@ function ResultScreen({
             dem Reifegrad Ihrer Prozesse, eingesetzter Software und dem Umfang
             der Automatisierung ab. Eine belastbare Einschätzung erfolgt im
             persönlichen Erstgespräch nach individueller Prozessanalyse.
-          </p>
-        </motion.div>
-
-        {/* CTA directly below */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 1.1, duration: 0.5 }}
-          className="rounded-2xl p-8 mb-5 text-center"
-          style={{ background: C.surface, border: `1px solid ${C.border}` }}
-        >
-          <motion.a
-            href="https://calendly.com/moreno-who/30min"
-            target="_blank"
-            rel="noopener noreferrer"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="inline-flex items-center gap-2.5 px-8 py-4 rounded-xl text-[15px] transition-all duration-300 shadow-[0_8px_32px_-8px_rgba(139,92,246,0.3)]"
-            style={{
-              background: C.accent,
-              color: C.onAccent,
-              fontWeight: 500,
-            }}
-          >
-            Kostenloses Erstgespräch buchen
-            <ArrowSquareOut size={16} weight="bold" />
-          </motion.a>
-
-          <h3
-            className="text-[1.3rem] md:text-[1.6rem] mt-7 mb-3 tracking-tight balance"
-            style={{ fontFamily: "var(--font-heading), Georgia, serif", color: C.text }}
-          >
-            In 15 Minuten zeige ich Ihnen,<br />
-            <span style={{ color: C.accent }}>welche Prozesse wir automatisieren.</span>
-          </h3>
-          <p className="text-sm max-w-[42ch] mx-auto" style={{ color: C.textSecondary }}>
-            Kein Verkaufsgespräch — nur eine ehrliche Einschätzung,
-            was in Ihrem Fall möglich ist und was nicht.
-          </p>
-
-          <p className="mt-5 text-[12px]" style={{ color: C.textMuted }}>
-            Keine Verpflichtung. Keine versteckten Kosten.
           </p>
         </motion.div>
 
@@ -1787,7 +2003,7 @@ export default function PotenzialanalysePage() {
       {showProgressBar && <ProgressBar phase={phase} />}
       {showProgressBar && <div className="h-[56px]" />}
 
-      <div className="relative max-w-2xl mx-auto px-5 py-8 pb-24">
+      <div className={phase === "intro" ? "relative" : "relative max-w-2xl mx-auto px-5 py-8 pb-24"}>
         <AnimatePresence mode="wait">
           {phase === "intro" && (
             <motion.div key="intro" {...PAGE_TRANSITION}>
