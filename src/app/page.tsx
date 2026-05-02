@@ -13,6 +13,11 @@ import {
 import { isDisposableEmail } from "./disposable-emails";
 import Footer from "./components/Footer";
 import { PulseBeams } from "@/components/ui/pulse-beams";
+import {
+  findBenchmark,
+  calculateRoi,
+  matchesPainKeyword,
+} from "@/lib/branchen-benchmarks";
 
 // ─────────────────────────────────────────────
 // CTA PULSE BEAMS CONFIG
@@ -156,6 +161,7 @@ interface Answers {
   q11_bestandskunden: string;
   q12_wert: string;
   q13_geschwindigkeit: string;
+  q14_zeitnutzung: string;
   q14_name: string;
   q14_unternehmen: string;
   q14_email: string;
@@ -280,6 +286,14 @@ const GESCHWINDIGKEIT = [
 
 const STUNDEN = ["Unter 5h", "5–10h", "10–20h", "Über 20h", "Keine Ahnung"];
 
+const ZEITNUTZUNG = [
+  "Mehr Kunden bedienen / Wachstum",
+  "Bestandskunden besser pflegen",
+  "Strategie / Konzeption",
+  "Persönliche Zeit / weniger Stress",
+  "Weiß noch nicht",
+];
+
 const ANALYZING_STEPS = [
   "Branche & Unternehmensgröße wird analysiert…",
   "Prozesse werden identifiziert…",
@@ -305,15 +319,51 @@ function getCoupledTimeSaving(score: number, stunden: string): string {
 }
 
 function calculateScore(a: Answers): ScoreResult {
-  const q6Map: Record<number, number> = { 1: 20, 2: 16, 3: 12, 4: 8, 5: 4 };
+  // q6 Tool-Zufriedenheit (max 15)
+  const q6Map: Record<number, number> = { 1: 15, 2: 12, 3: 9, 4: 5, 5: 2 };
   const q6Points = q6Map[a.q6_zufriedenheit] ?? 0;
-  // "Keine der obigen" wird nicht als Aufgabe gezählt
+
+  // q4_tools Bestehende Automation (max 15)
+  const realTools = a.q4_tools.filter((t) => t !== "Keine / Weiß nicht");
+  const hasKeine = a.q4_tools.includes("Keine / Weiß nicht");
+  const onlyExcel =
+    realTools.length === 1 && realTools[0] === "Excel/Google Sheets";
+  let q9Points: number;
+  if (hasKeine || realTools.length === 0) {
+    q9Points = 15;
+  } else if (onlyExcel) {
+    q9Points = 13;
+  } else if (realTools.length <= 2) {
+    q9Points = 12;
+  } else if (realTools.length <= 4) {
+    q9Points = 8;
+  } else {
+    q9Points = 4;
+  }
+
+  // q7 × q8 Wiederholende Aufgaben (max 25)
   const realTasks = a.q7_aufgaben.filter((t) => t !== "Keine der obigen");
-  const q7Points = Math.min(realTasks.length, 10) * 3;
+  const q7q8MultMap: Record<string, number> = {
+    "Unter 5h": 0.5,
+    "5–10h": 1.0,
+    "10–20h": 1.3,
+    "Über 20h": 1.5,
+    "Keine Ahnung": 1.0,
+  };
+  const q7q8Mult = q7q8MultMap[a.q8_stunden] ?? 1.0;
+  const q7Points = Math.min(Math.round(realTasks.length * 4 * q7q8Mult), 25);
+
+  // q8 Zeitaufwand (max 25)
   const q8Map: Record<string, number> = {
-    "Unter 5h": 5, "5–10h": 13, "10–20h": 20, "Über 20h": 25, "Keine Ahnung": 10,
+    "Unter 5h": 5,
+    "5–10h": 13,
+    "10–20h": 20,
+    "Über 20h": 25,
+    "Keine Ahnung": 10,
   };
   const q8Points = q8Map[a.q8_stunden] ?? 0;
+
+  // q10 Follow-up (max 15)
   const q10Map: Record<string, number> = {
     "Ja, systematisch": 0,
     "Manchmal, wenn ich dran denke": 7,
@@ -321,40 +371,108 @@ function calculateScore(a: Answers): ScoreResult {
     "Was ist Follow-up?": 15,
   };
   const q10Points = q10Map[a.q10_followup] ?? 0;
-  const q11Map: Record<string, number> = {
-    "Unter 50": 10,
-    "50–200": 7,
-    "Über 200": 4,
-  };
-  const q11Points = q11Map[a.q11_bestandskunden] ?? 0;
-  const normalized = q6Points + q7Points + q8Points + q10Points + q11Points;
+
+  // q3_nerv Pain-Bonus (max 5)
+  const painText = (a.q3_nerv ?? "").trim();
+  let painBonus: number;
+  if (painText.length < 15) {
+    painBonus = 0;
+  } else if (matchesPainKeyword(painText)) {
+    painBonus = 5;
+  } else {
+    painBonus = 2;
+  }
+
+  const normalized =
+    q6Points + q9Points + q7Points + q8Points + q10Points + painBonus;
   const timeSaving = getCoupledTimeSaving(normalized, a.q8_stunden);
+
+  // Category & description (Lead-Sicht: show-what, hide-how)
+  const PAIN_QUOTE_MAX = 120;
+  const painQuote =
+    painText.length >= 15
+      ? painText.length > PAIN_QUOTE_MAX
+        ? painText.slice(0, PAIN_QUOTE_MAX - 1).trimEnd() + "…"
+        : painText
+      : "";
 
   let category: string;
   let description: string;
 
-  if (normalized < 40) {
-    category = "Grund";
-    description = "Bereits solide Strukturen erkennbar. Punktuelle Optimierung erscheint möglich.";
+  if (normalized < 35) {
+    category = "Niedrig";
+    description = "Solide Strukturen erkennbar, punktuelle Optimierung möglich.";
   } else if (normalized < 70) {
     category = "Mittel";
-    description = `Geschätztes Automatisierungspotenzial: ca. ${timeSaving}.*`;
+    description = painQuote
+      ? `Sie haben "${painQuote}" als Hauptproblem genannt — das ist genau der Hebel mit dem höchsten ROI in Unternehmen Ihrer Größe.`
+      : `Erkennbares Potenzial mit klaren Hebeln. Geschätzte Ersparnis: ca. ${timeSaving}.*`;
   } else {
     category = "Hoch";
-    description = `Erhebliches Automatisierungspotenzial erkennbar. Geschätzte Ersparnis: ca. ${timeSaving}.*`;
+    description = painQuote
+      ? `Sie haben "${painQuote}" als Hauptproblem genannt — das ist genau der Hebel mit dem höchsten ROI in Unternehmen Ihrer Größe.`
+      : "Erhebliches Potenzial erkennbar.";
   }
 
   const ratingLabel: Record<number, string> = {
-    1: "Frustriert (1/5)", 2: "Unzufrieden (2/5)", 3: "Okay (3/5)",
-    4: "Zufrieden (4/5)", 5: "Sehr zufrieden (5/5)",
+    1: "Frustriert (1/5)",
+    2: "Unzufrieden (2/5)",
+    3: "Okay (3/5)",
+    4: "Zufrieden (4/5)",
+    5: "Sehr zufrieden (5/5)",
   };
 
+  const toolsValue = hasKeine
+    ? "Keine / Weiß nicht"
+    : realTools.length === 0
+      ? "—"
+      : `${realTools.length} Tool${realTools.length === 1 ? "" : "s"} im Einsatz`;
+
   const breakdown: ScoreBreakdownItem[] = [
-    { label: "Tool-Zufriedenheit", points: q6Points, max: 20, value: ratingLabel[a.q6_zufriedenheit] ?? "—" },
-    { label: "Wiederholende Aufgaben", points: q7Points, max: 30, value: realTasks.length > 0 ? `${realTasks.length} identifiziert` : "Keine" },
-    { label: "Zeitaufwand", points: q8Points, max: 25, value: a.q8_stunden || "—" },
-    { label: "Follow-up System", points: q10Points, max: 15, value: a.q10_followup || "—" },
-    { label: "Unternehmensgröße", points: q11Points, max: 10, value: a.q11_bestandskunden || "—" },
+    {
+      label: "Tool-Zufriedenheit",
+      points: q6Points,
+      max: 15,
+      value: ratingLabel[a.q6_zufriedenheit] ?? "—",
+    },
+    {
+      label: "Bestehende Automation",
+      points: q9Points,
+      max: 15,
+      value: toolsValue,
+    },
+    {
+      label: "Wiederholende Aufgaben",
+      points: q7Points,
+      max: 25,
+      value:
+        realTasks.length > 0
+          ? `${realTasks.length} identifiziert`
+          : "Keine",
+    },
+    {
+      label: "Zeitaufwand",
+      points: q8Points,
+      max: 25,
+      value: a.q8_stunden || "—",
+    },
+    {
+      label: "Follow-up System",
+      points: q10Points,
+      max: 15,
+      value: a.q10_followup || "—",
+    },
+    {
+      label: "Pain-Bonus",
+      points: painBonus,
+      max: 5,
+      value:
+        painBonus === 5
+          ? "Konkreter Pain genannt"
+          : painBonus === 2
+            ? "Kontext angegeben"
+            : "Nicht ausgefüllt",
+    },
   ];
 
   return { normalized, timeSaving, category, description, breakdown };
@@ -825,7 +943,7 @@ function IntroScreen({ onStart }: { onStart: () => void }) {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5, duration: 0.6 }}
           >
-            {["13 kurze Fragen", "Sofort Ergebnis", "100% kostenlos"].map((label, i) => (
+            {["14 kurze Fragen", "Sofort Ergebnis", "100% kostenlos"].map((label, i) => (
               <div key={label} className="flex items-center gap-6">
                 {i > 0 && <div className="w-px h-3" style={{ background: C.border }} />}
                 <span className="text-[13px]" style={{ color: C.textMuted }}>{label}</span>
@@ -1063,6 +1181,7 @@ function Phase3({
     answers.q7_aufgaben.length > 0 &&
     answers.q8_stunden !== "" &&
     answers.q10_followup !== "" &&
+    answers.q14_zeitnutzung !== "" &&
     answers.q11_bestandskunden !== "";
 
   return (
@@ -1129,7 +1248,25 @@ function Phase3({
         </div>
       </QuestionBlock>
 
-      <QuestionBlock num={10} label="Wie viele Bestandskunden haben Sie ungefähr?">
+      <QuestionBlock
+        num={10}
+        label="Wenn die nervigsten manuellen Aufgaben weg wären — was würden Sie mit der gewonnenen Zeit machen?"
+      >
+        <div className="flex flex-col gap-2">
+          {ZEITNUTZUNG.map((z) => (
+            <ChoiceBtn
+              key={z}
+              selected={answers.q14_zeitnutzung === z}
+              onClick={() => update("q14_zeitnutzung", z)}
+              fullWidth
+            >
+              {z}
+            </ChoiceBtn>
+          ))}
+        </div>
+      </QuestionBlock>
+
+      <QuestionBlock num={11} label="Wie viele Bestandskunden haben Sie ungefähr?">
         <div className="flex flex-wrap gap-2">
           {BESTANDSKUNDEN.map((b) => (
             <ChoiceBtn
@@ -1172,7 +1309,7 @@ function Phase4({
       <PhaseHeader num={4} title="Fast geschafft" />
 
       <QuestionBlock
-        num={11}
+        num={12}
         label="Welches Budget wäre Ihnen eine Automatisierungslösung wert, die Ihre wiederkehrenden Aufgaben spürbar reduziert?"
       >
         <div className="flex flex-col gap-2">
@@ -1189,7 +1326,7 @@ function Phase4({
         </div>
       </QuestionBlock>
 
-      <QuestionBlock num={12} label="Wie schnell brauchen Sie eine Lösung?">
+      <QuestionBlock num={13} label="Wie schnell brauchen Sie eine Lösung?">
         <div className="flex flex-wrap gap-2">
           {GESCHWINDIGKEIT.map((g) => (
             <ChoiceBtn
@@ -1215,7 +1352,7 @@ function Phase4({
               fontWeight: 500,
             }}
           >
-            13
+            14
           </span>
           <p className="text-[15px] font-medium" style={{ color: C.text }}>
             Wohin dürfen wir Ihr Ergebnis senden?
@@ -1602,6 +1739,15 @@ function CompactBreakdown({ breakdown }: { breakdown: ScoreBreakdownItem[] }) {
 // RESULT SCREEN
 // ─────────────────────────────────────────────
 
+function formatEurRounded(n: number): string {
+  if (n < 5000) {
+    const r = Math.round(n / 500) * 500;
+    return `${r.toLocaleString("de-DE")} €`;
+  }
+  const r = Math.round(n / 1000) * 1000;
+  return `${r.toLocaleString("de-DE")} €`;
+}
+
 function ResultScreen({
   answers,
   score,
@@ -1611,6 +1757,15 @@ function ResultScreen({
   score: ScoreResult;
   onReset: () => void;
 }) {
+  const benchmark = findBenchmark(answers.q1_branche);
+  const roi = calculateRoi(
+    benchmark,
+    answers.q8_stunden,
+    answers.q11_bestandskunden,
+  );
+  const topHebel = benchmark.typischeHebel.slice(0, 3);
+  const showHebelSection = score.category !== "Niedrig";
+
   return (
     <div className="min-h-[100dvh] py-16 px-4">
       <div className="max-w-xl mx-auto">
@@ -1713,6 +1868,74 @@ function ResultScreen({
             </div>
           </motion.div>
         </motion.div>
+
+        {/* Hebel + ROI-Range — show-what, hide-how */}
+        {showHebelSection && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.05, duration: 0.5 }}
+            className="rounded-2xl p-6 md:p-8 mb-4"
+            style={{ background: C.surface, border: `1px solid ${C.border}` }}
+          >
+            <p
+              className="text-[11px] uppercase tracking-[0.28em] mb-4"
+              style={{ color: C.accent, fontWeight: 500 }}
+            >
+              Wo Ihr Hebel liegt
+            </p>
+            <ul className="space-y-3 mb-6">
+              {topHebel.map((h, i) => (
+                <motion.li
+                  key={i}
+                  initial={{ opacity: 0, x: -6 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 1.15 + i * 0.08, duration: 0.4 }}
+                  className="flex items-start gap-3"
+                >
+                  <span
+                    className="flex-shrink-0 mt-1.5 w-1.5 h-1.5 rounded-full"
+                    style={{ background: C.accent }}
+                  />
+                  <span
+                    className="text-[14px] leading-relaxed"
+                    style={{ color: C.text }}
+                  >
+                    {h}
+                  </span>
+                </motion.li>
+              ))}
+            </ul>
+            <div
+              className="pt-5 border-t"
+              style={{ borderColor: C.border }}
+            >
+              <p
+                className="text-[14px] leading-relaxed"
+                style={{ color: C.textSecondary }}
+              >
+                Bei Unternehmen Ihrer Größe und Branche sehen wir
+                realistisch zwischen{" "}
+                <span style={{ color: C.text, fontWeight: 600 }}>
+                  {formatEurRounded(roi.gesamthebelMinEurJahr)}
+                </span>{" "}
+                und{" "}
+                <span style={{ color: C.text, fontWeight: 600 }}>
+                  {formatEurRounded(roi.gesamthebelMaxEurJahr)}
+                </span>
+                /Jahr ungenutztes Potenzial.*
+              </p>
+              <p
+                className="text-[14px] leading-relaxed mt-4"
+                style={{ color: C.textSecondary }}
+              >
+                Wie genau diese Hebel bei Ihnen aussehen würden —
+                inklusive konkreter Aufwand, Tools und Preis — besprechen
+                wir am besten in einem 30-Minuten-Erstgespräch.
+              </p>
+            </div>
+          </motion.div>
+        )}
 
         {/* CTA block — category-dependent headline + subtext */}
         {(() => {
@@ -1875,6 +2098,7 @@ const DEFAULT_ANSWERS: Answers = {
   q7_aufgaben: [], q8_stunden: "", q9_kundengewinnung: [],
   q10_followup: "", q11_bestandskunden: "",
   q12_wert: "", q13_geschwindigkeit: "",
+  q14_zeitnutzung: "",
   q14_name: "", q14_unternehmen: "", q14_email: "", q14_telefon: "",
   consent: false,
 };

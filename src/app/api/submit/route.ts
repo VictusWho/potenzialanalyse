@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 import { isDisposableEmail } from "../../disposable-emails";
+import {
+  findBenchmark,
+  calculateRoi,
+  techStackHint,
+  pitchFrame,
+} from "@/lib/branchen-benchmarks";
 
 interface Answers {
   q1_branche: string;
@@ -17,6 +23,7 @@ interface Answers {
   q11_bestandskunden: string;
   q12_wert: string;
   q13_geschwindigkeit: string;
+  q14_zeitnutzung: string;
   q14_name: string;
   q14_unternehmen: string;
   q14_email: string;
@@ -140,6 +147,7 @@ function buildEmailHTML(answers: Answers, score: ScoreResult): string {
           row("Stunden/Woche dafür", answers.q8_stunden) +
           row("Kundengewinnung", answers.q9_kundengewinnung.length ? answers.q9_kundengewinnung.map(chip).join(" ") : "—") +
           row("Follow-up System", answers.q10_followup) +
+          row("Zeit-Wertschätzung", answers.q14_zeitnutzung) +
           row("Bestandskunden", answers.q11_bestandskunden)
       )}
 
@@ -234,6 +242,213 @@ async function syncToNotion(answers: Answers, score: ScoreResult) {
   console.log("🆕 Notion-Lead angelegt:", answers.q14_email);
 }
 
+function fmtEur(n: number): string {
+  return `${Math.round(n).toLocaleString("de-DE")} €`;
+}
+
+function buildBriefingMarkdown(answers: Answers, score: ScoreResult): string {
+  const bm = findBenchmark(answers.q1_branche);
+  const roi = calculateRoi(bm, answers.q8_stunden, answers.q11_bestandskunden);
+  const frame = pitchFrame(answers.q14_zeitnutzung);
+  const stack = techStackHint(answers.q4_tools);
+
+  const ratingLabel: Record<number, string> = {
+    1: "Frustriert (1/5)",
+    2: "Unzufrieden (2/5)",
+    3: "Okay (3/5)",
+    4: "Zufrieden (4/5)",
+    5: "Sehr zufrieden (5/5)",
+  };
+
+  const toolsLabel = (() => {
+    const items = answers.q4_tools.map((t) => {
+      const detail = answers.q4_tools_detail?.[t];
+      return detail ? `${t} (${detail})` : t;
+    });
+    return items.length ? items.join(", ") : "Keine angegeben";
+  })();
+
+  const akquise = answers.q9_kundengewinnung.length
+    ? answers.q9_kundengewinnung.join(", ")
+    : "Keine angegeben";
+
+  const aufgaben = answers.q7_aufgaben.filter((t) => t !== "Keine der obigen");
+
+  // Pitch-Hinweis je nach Frame
+  const pitchHint =
+    frame.kind === "qualitativ"
+      ? "qualitativ framen (Lebensqualität, weniger Stress, Fokuszeit). Quantitative ROI-Zahlen unterstützend, nicht im Mittelpunkt."
+      : frame.kind === "quantitativ"
+        ? `quantitativ framen (${frame.label}). Konkrete Euro-/Stunden-Zahlen in den Mittelpunkt stellen.`
+        : "Framing offen. Im Erstgespräch klären, ob Pitch quantitativ oder qualitativ landet.";
+
+  // Amortisation bei 3.500 € Projekt-Pricing
+  const projektPreis = 3500;
+  const monatlicherHebelMin = roi.gesamthebelMinEurJahr / 12;
+  const paybackMonate =
+    monatlicherHebelMin > 0 ? projektPreis / monatlicherHebelMin : Infinity;
+  const paybackText =
+    paybackMonate === Infinity
+      ? "n/a"
+      : paybackMonate < 1
+        ? "< 1 Monat"
+        : `~${paybackMonate.toFixed(1)} Monate`;
+
+  // ROI-Pitch-Satz
+  const pitchSatz =
+    frame.kind === "qualitativ"
+      ? `Manuelle Last halbieren = ca. ${(roi.stundenMid * 0.4).toFixed(1)} h/Woche zurück. Lebensqualität als Kern-Argument.`
+      : frame.kind === "quantitativ"
+        ? `${fmtEur(roi.gesamthebelMinEurJahr)}–${fmtEur(roi.gesamthebelMaxEurJahr)}/Jahr realistisch freisetzbar — Payback bei 3.500 € Projekt-Pricing: ${paybackText}.`
+        : `Hebel ${fmtEur(roi.gesamthebelMinEurJahr)}–${fmtEur(roi.gesamthebelMaxEurJahr)}/Jahr — Pitch-Framing im Gespräch klären.`;
+
+  // Hebel-Liste mit optionaler Pain-Markierung
+  const painLower = (answers.q3_nerv ?? "").toLowerCase();
+  const hebelKeywordHints: Array<[string, RegExp]> = [
+    ["follow", /follow|nachfass|nachhak/],
+    ["termin", /termin|kalend/],
+    ["rechnung|mahn", /rechnung|mahn|zahlung/],
+    ["bestand|cross", /bestand|cross|kund/],
+  ];
+  const hebelLines = bm.typischeHebel
+    .map((h, i) => {
+      const hLower = h.toLowerCase();
+      const matched = hebelKeywordHints.some(
+        ([key, re]) =>
+          new RegExp(key).test(hLower) && re.test(painLower),
+      );
+      const marker = matched ? " ★ deckt Pain-Aussage" : "";
+      return `${i + 1}. ${h}${marker}`;
+    })
+    .join("\n");
+
+  // Direkter nächster Schritt
+  const nextStep = (() => {
+    switch (answers.q13_geschwindigkeit) {
+      case "Sofort":
+        return "Erstgespräch innerhalb 48h anbieten.";
+      case "Nächste 4 Wochen":
+        return "Termin-Vorschlag in den nächsten 14 Tagen.";
+      case "Nächste 3 Monate":
+        return "Soft Touch in 1–2 Wochen, danach Termin-Vorschlag.";
+      case "Irgendwann":
+        return "Soft Touch in 2–4 Wochen, kein Druck.";
+      default:
+        return "Im Erstgespräch klären.";
+    }
+  })();
+
+  const breakdownLines = (score.breakdown ?? [])
+    .map((b) => `- ${b.label}: ${b.points}/${b.max} (${b.value})`)
+    .join("\n");
+
+  const timestamp = new Date().toLocaleString("de-DE", {
+    timeZone: "Europe/Berlin",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+
+  return `# Discovery-Briefing: ${answers.q14_unternehmen || "(ohne Firma)"}
+
+**Eingang:** ${timestamp}
+**Lead:** ${answers.q14_name} <${answers.q14_email}>
+**Telefon:** ${answers.q14_telefon || "—"}
+
+## Persona-Profil
+- Branche: ${answers.q1_branche || "—"} (${bm.name})
+- Größe: ${answers.q2_mitarbeiter || "—"} Mitarbeiter, ca. ${answers.q11_bestandskunden || "—"} Bestandskunden
+- Hat Website: ${answers.q5_website || "—"}${answers.q5_url ? ` (${answers.q5_url})` : ""}
+- Bestehende Tools: ${toolsLabel}
+- Aktuelle Tool-Zufriedenheit: ${ratingLabel[answers.q6_zufriedenheit] ?? "—"}
+- Akquise-Kanäle: ${akquise}
+- Follow-up-Reife: ${answers.q10_followup || "—"}
+- Zeit-Wertschätzung: "${answers.q14_zeitnutzung || "—"}"
+  → Pitch sollte ${pitchHint}
+
+## Pain laut User
+> ${answers.q3_nerv ? `"${answers.q3_nerv}"` : "Kein Freitext gegeben."}
+
+## Score-Diagnose
+**Gesamt-Score:** ${score.normalized}/100 (${score.category})
+
+Breakdown:
+${breakdownLines}
+
+## ROI-Schätzung (basierend auf Branchen-Benchmarks)
+
+**Annahmen (transparent gemacht — im Gespräch validieren):**
+- ~${roi.kundenMid} Bestandskunden (Mid-Value von "${answers.q11_bestandskunden || "—"}")
+- ~${roi.stundenMid} h/Woche manuelle Arbeit (Mid-Value von "${answers.q8_stunden || "—"}")
+- Stundensatz: ${bm.stundenSatzMin}–${bm.stundenSatzMax} € (Branche ${bm.name}, Mid: ${roi.stundenSatzMid} €)
+- Kundenwert/Jahr: ${bm.kundenwertProJahrMin}–${bm.kundenwertProJahrMax} € (Mid: ${roi.kundenwertMid} €)
+- Cross-Sell-Potenzial: ~${bm.crossSellPotenzialPct}% bei besserem Follow-up
+
+**Manuelle Last (aktuell):**
+- ${roi.stundenMid} h/Woche × ${roi.stundenSatzMid} €/h × 4 = ${fmtEur(roi.manuelleLastEurMonat)}/Monat
+- ≈ ${fmtEur(roi.manuelleLastEurJahr)}/Jahr
+
+**Bestandsumsatz:**
+- ${roi.kundenMid} Kunden × ${roi.kundenwertMid} €/Jahr ≈ ${fmtEur(roi.bestandsumsatzEurJahr)}/Jahr
+
+**Cross-Sell-Hebel bei besserem Follow-up:**
+- ~${bm.crossSellPotenzialPct}% von ${fmtEur(roi.bestandsumsatzEurJahr)} ≈ ${fmtEur(roi.crossSellEurJahr)}/Jahr zusätzlich realistisch
+
+**Realistische Ersparnis durch Automation:**
+- 30–50% der manuellen Last automatisierbar = ${fmtEur(roi.ersparnisMinEurJahr)}–${fmtEur(roi.ersparnisMaxEurJahr)}/Jahr
+- Plus Cross-Sell-Hebel: Gesamthebel **${fmtEur(roi.gesamthebelMinEurJahr)}–${fmtEur(roi.gesamthebelMaxEurJahr)}/Jahr**
+
+**Projekt-Amortisation:**
+- Bei Projekt-Pricing 3.500 €: Payback ${paybackText} (gerechnet vs. konservativem Hebel-Min)
+- Empfohlener Pitch: "${pitchSatz}"
+
+## Vermutliche Hebel (Branchen-spezifisch)
+${hebelLines}
+
+${aufgaben.length > 0 ? `Vom User explizit als wiederholend genannt: ${aufgaben.join(", ")}.` : ""}
+
+## Tech-Stack-Empfehlung (initial)
+${stack}
+
+## Offene Fragen für Erstgespräch
+1. Welcher der genannten Hebel hat aktuell den höchsten Schmerz?
+2. Wer trifft die Entscheidung über solche Investitionen?
+3. Welche Datenquellen würden für die Automation angezapft? (Welches CRM? Excel-Listen? Mail-Postfach?)
+4. Gibt es DSGVO-/Compliance-spezifische Constraints?
+5. Realistische Timeline und Budget-Erwartung?
+
+## Direkter nächster Schritt
+${nextStep}
+
+---
+*Automatisch generiertes Briefing. Annahmen basieren auf Branchen-Benchmarks und sind im Erstgespräch zu validieren. Investitionsbereitschaft laut User: ${answers.q12_wert || "—"}.*
+`;
+}
+
+async function sendInternalBriefing(answers: Answers, score: ScoreResult) {
+  const markdown = buildBriefingMarkdown(answers, score);
+  const subject = `[Briefing] ${answers.q14_unternehmen || answers.q14_name || "Lead"} — Score ${score.normalized}/100`;
+
+  if (!process.env.RESEND_API_KEY) {
+    console.log("⚠️  RESEND_API_KEY not set — skipping internal briefing.");
+    console.log("Subject:", subject);
+    return;
+  }
+
+  const { Resend } = await import("resend");
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const from =
+    process.env.FROM_EMAIL ?? "Potenzialanalyse <onboarding@resend.dev>";
+
+  const { error } = await resend.emails.send({
+    from,
+    to: ["moreno.who@gmail.com"],
+    subject,
+    text: markdown,
+  });
+
+  if (error) throw new Error(`Resend (briefing): ${error.message}`);
+}
+
 async function sendEmail(answers: Answers, score: ScoreResult) {
   const html = buildEmailHTML(answers, score);
   const subject = `Potenzialanalyse: ${answers.q14_name} (${answers.q14_unternehmen}) — Score ${score.normalized}/100`;
@@ -271,10 +486,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Beide parallel — wenn eins fehlschlägt, blockiert es das andere nicht
-    const [emailResult, notionResult] = await Promise.allSettled([
+    // Alle drei parallel — Fehlschlag eines blockiert die anderen nicht
+    const [emailResult, notionResult, briefingResult] = await Promise.allSettled([
       sendEmail(answers, score),
       syncToNotion(answers, score),
+      sendInternalBriefing(answers, score),
     ]);
 
     if (emailResult.status === "rejected") {
@@ -283,8 +499,11 @@ export async function POST(request: Request) {
     if (notionResult.status === "rejected") {
       console.error("Notion-Sync fehlgeschlagen:", notionResult.reason);
     }
+    if (briefingResult.status === "rejected") {
+      console.error("Internes Briefing fehlgeschlagen:", briefingResult.reason);
+    }
 
-    // Erfolg, solange mindestens eines klappt
+    // Erfolg, solange mindestens eines der Lead-Kanäle (Mail/Notion) klappt
     const anySuccess =
       emailResult.status === "fulfilled" || notionResult.status === "fulfilled";
 
@@ -299,6 +518,7 @@ export async function POST(request: Request) {
       success: true,
       email: emailResult.status,
       notion: notionResult.status,
+      briefing: briefingResult.status,
     });
   } catch (err) {
     console.error("Submit route error:", err);
